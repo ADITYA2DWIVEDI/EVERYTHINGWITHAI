@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { User } from '../types';
 import { QRCodeCanvas } from 'qrcode.react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -10,13 +10,18 @@ interface ChatMessage {
     timestamp: number;
 }
 
+const WEBSOCKET_URL = 'ws://localhost:8080';
+
 const LiveChat: React.FC<{ user: User | null }> = ({ user }) => {
     const [room, setRoom] = useState<string | null>(null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [inputValue, setInputValue] = useState('');
     const [roomIdInput, setRoomIdInput] = useState('');
-    const channelRef = useRef<BroadcastChannel | null>(null);
+    const [users, setUsers] = useState<string[]>([]);
+    const [typingUsers, setTypingUsers] = useState<string[]>([]);
+    const wsRef = useRef<WebSocket | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const typingTimeoutRef = useRef<number | null>(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -34,30 +39,43 @@ const LiveChat: React.FC<{ user: User | null }> = ({ user }) => {
     
     useEffect(() => {
         if (room && user?.email) {
-            const channel = new BroadcastChannel(`livechat_${room}`);
-            channel.onmessage = (event) => {
-                const newMessage: ChatMessage = event.data;
-                if(newMessage.sender !== user?.email) {
-                    setMessages(prev => [...prev, newMessage]);
+            const ws = new WebSocket(WEBSOCKET_URL);
+            wsRef.current = ws;
+
+            ws.onopen = () => {
+                ws.send(JSON.stringify({ type: 'join', payload: { room, email: user.email } }));
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    switch (data.type) {
+                        case 'message':
+                            setMessages(prev => [...prev, data.payload]);
+                            break;
+                        case 'user-list-update':
+                            setUsers(data.payload.users);
+                            break;
+                        case 'typing-update':
+                            setTypingUsers(data.payload.typingUsers.filter((email: string) => email !== user.email));
+                            break;
+                    }
+                } catch (error) {
+                    console.error('Failed to parse message:', error);
                 }
             };
-            channelRef.current = channel;
-            
-            // Clean up URL
+
             const url = new URL(window.location.href);
             url.searchParams.delete('room');
             window.history.replaceState({}, document.title, url.pathname);
         }
 
-        return () => {
-            channelRef.current?.close();
-            channelRef.current = null;
-        };
+        return () => wsRef.current?.close();
     }, [room, user]);
 
     const handleSendMessage = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!inputValue.trim() || !user || !channelRef.current) return;
+        if (!inputValue.trim() || !user || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
         
         const newMessage: ChatMessage = {
             id: Date.now().toString(),
@@ -66,21 +84,38 @@ const LiveChat: React.FC<{ user: User | null }> = ({ user }) => {
             timestamp: Date.now(),
         };
 
-        channelRef.current.postMessage(newMessage);
-        setMessages(prev => [...prev, newMessage]);
+        wsRef.current.send(JSON.stringify({ type: 'message', payload: newMessage }));
+        wsRef.current.send(JSON.stringify({ type: 'stop-typing' }));
+        if(typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
         setInputValue('');
     };
-    
-    const createRoom = () => {
-        const newRoomId = Math.random().toString(36).substring(2, 8).toUpperCase();
-        setRoom(newRoomId);
-    };
 
-    const joinRoom = () => {
-        if (roomIdInput.trim()) {
-            setRoom(roomIdInput.trim().toUpperCase());
+    const handleTyping = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setInputValue(e.target.value);
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+        if (e.target.value.trim() !== '') {
+            wsRef.current.send(JSON.stringify({ type: 'start-typing' }));
+            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = window.setTimeout(() => {
+                wsRef.current?.send(JSON.stringify({ type: 'stop-typing' }));
+            }, 3000);
+        } else {
+             wsRef.current.send(JSON.stringify({ type: 'stop-typing' }));
+             if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
         }
     };
+    
+    const createRoom = () => setRoom(Math.random().toString(36).substring(2, 8).toUpperCase());
+    const joinRoom = () => roomIdInput.trim() && setRoom(roomIdInput.trim().toUpperCase());
+    
+    const typingDisplay = useMemo(() => {
+        if (typingUsers.length === 0) return '';
+        const names = typingUsers.map(email => email.split('@')[0]);
+        if (names.length === 1) return `${names[0]} is typing...`;
+        if (names.length === 2) return `${names[0]} and ${names[1]} are typing...`;
+        return `${names.slice(0, 2).join(', ')} and others are typing...`;
+    }, [typingUsers]);
     
     if (!room) {
         return (
@@ -111,7 +146,7 @@ const LiveChat: React.FC<{ user: User | null }> = ({ user }) => {
                 <div className="flex flex-col flex-1">
                     <div className="p-4 border-b border-gray-200">
                         <h2 className="text-xl font-bold">Room: {room}</h2>
-                        <p className="text-sm text-gray-500">End-to-end encrypted chat (simulation). Share the room ID or QR code.</p>
+                        <p className="text-sm text-gray-500">Share the room ID or QR code to invite others.</p>
                     </div>
                     <div className="flex-1 overflow-y-auto p-4 space-y-4">
                         <AnimatePresence>
@@ -149,21 +184,33 @@ const LiveChat: React.FC<{ user: User | null }> = ({ user }) => {
                         </AnimatePresence>
                         <div ref={messagesEndRef} />
                     </div>
+                     <div className="h-6 px-4 text-xs text-gray-500 italic">
+                        {typingDisplay}
+                    </div>
                     <div className="p-4 border-t border-gray-200">
                         <form onSubmit={handleSendMessage} className="flex gap-2">
-                            <input type="text" value={inputValue} onChange={e => setInputValue(e.target.value)} placeholder="Type a message..." className="flex-1 px-4 py-2 bg-gray-100 border border-transparent rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                            <input type="text" value={inputValue} onChange={handleTyping} placeholder="Type a message..." className="flex-1 px-4 py-2 bg-gray-100 border border-transparent rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500"/>
                             <button type="submit" className="bg-blue-600 text-white font-bold w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-colors">&rarr;</button>
                         </form>
                     </div>
                 </div>
-                <div className="w-full sm:w-64 bg-gray-50 p-4 border-t sm:border-t-0 sm:border-l border-gray-200 flex flex-col items-center justify-center">
-                     <h3 className="text-lg font-bold mb-2">Scan to Join</h3>
-                     <p className="text-xs text-center text-gray-500 mb-4">Open this app on your phone and scan this QR code to join the chat.</p>
-                     <div className="p-2 bg-white rounded-lg shadow-md">
-                        <QRCodeCanvas value={roomUrl} size={160} />
+                <aside className="w-full sm:w-64 bg-gray-50 p-4 border-t sm:border-t-0 sm:border-l border-gray-200 flex flex-col">
+                     <h3 className="text-lg font-bold mb-2">Invite Others</h3>
+                     <p className="text-xs text-center text-gray-500 mb-4">Scan the QR code to join this room.</p>
+                     <div className="p-2 bg-white rounded-lg shadow-md self-center">
+                        <QRCodeCanvas value={roomUrl} size={128} />
                      </div>
                      <input type="text" readOnly value={roomUrl} className="mt-4 w-full text-xs text-center bg-gray-200 rounded p-1 border border-gray-300" />
-                </div>
+                     <hr className="my-4 border-gray-200" />
+                     <h3 className="text-lg font-bold mb-2">Users ({users.length})</h3>
+                     <ul className="space-y-2 flex-1 overflow-y-auto">
+                        {users.map(email => (
+                            <li key={email} className="text-sm text-gray-700 truncate">
+                                {email === user?.email ? `${email.split('@')[0]} (You)` : email.split('@')[0]}
+                            </li>
+                        ))}
+                     </ul>
+                </aside>
              </div>
         </div>
     );

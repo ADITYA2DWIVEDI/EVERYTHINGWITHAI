@@ -8,9 +8,10 @@ interface SettingsProps {
 const Settings: React.FC<SettingsProps> = ({ user }) => {
 
   const handleClearHistory = () => {
-    // In a real app, you would clear history from a database.
-    // Here we can just alert the user.
-    alert('Chat history clearing is not implemented in this demo.');
+    if (user && window.confirm('Are you sure you want to delete all your AI Assistant conversations? This action cannot be undone.')) {
+        localStorage.removeItem(`conversations-${user.email}`);
+        alert('Chat history has been cleared. It will be gone the next time you visit the assistant.');
+    }
   };
 
   return (
@@ -62,7 +63,7 @@ const Settings: React.FC<SettingsProps> = ({ user }) => {
           <h3 className="text-lg font-semibold text-gray-800 mb-4">Data Management</h3>
           <div className="flex items-center justify-between">
             <div>
-              <p className="font-medium text-gray-700">Clear Chat History</p>
+              <p className="font-medium text-gray-700">Clear AI Chat History</p>
               <p className="text-sm text-gray-500">This action cannot be undone.</p>
             </div>
             <button 

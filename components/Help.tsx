@@ -19,15 +19,19 @@ const Help: React.FC = () => {
   const faqs = [
     {
       question: 'How does the AI Assistant work?',
-      answer: 'Our AI Assistant uses advanced language models from Google to provide conversational search results. It grounds its answers in real-time information from the web and provides sources for its claims.'
+      answer: 'Our AI Assistant uses advanced language models from Google to provide conversational search results. It grounds its answers in real-time information from the web and provides sources for its claims. Conversations are now saved to your device for easy access.'
     },
     {
       question: 'Is the Live Chat secure?',
-      answer: 'The Live Chat feature uses the browser\'s Broadcast Channel API for local, cross-tab communication. For a real-world application, this would be replaced with a secure, end-to-end encrypted WebSocket connection. This version is a simulation for demonstration purposes.'
+      answer: 'The Live Chat feature now uses a dedicated WebSocket server to enable real-time communication between users across different devices. This allows for features like live user lists and typing indicators. For production environments, this connection should be secured with SSL/TLS (WSS).'
+    },
+     {
+      question: 'What are the new creative tools?',
+      answer: 'We have added two new features: the **Image Studio** for generating and editing AI images, and the **Voice Lab** for creating speech from text using different AI voices. These tools leverage powerful generative AI models to bring your ideas to life.'
     },
     {
       question: 'Can I use this app offline?',
-      answer: 'Yes! This is a Progressive Web App (PWA). Once you visit the site, key assets are cached, allowing you to access the interface and previously loaded content even without an internet connection. However, AI features require an active connection.'
+      answer: 'Yes! This is a Progressive Web App (PWA). Once you visit the site, key assets are cached, allowing you to access the interface and previously loaded content even without an internet connection. However, AI features require an active connection to our servers and Google\'s APIs.'
     }
   ];
 

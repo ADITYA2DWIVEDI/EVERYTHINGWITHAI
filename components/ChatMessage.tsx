@@ -1,14 +1,14 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { Message } from '../types';
+import type { ConversationMessage } from '../types';
 import { UserIcon } from './icons/UserIcon';
 import { AiIcon } from './icons/AiIcon';
 import SourceList from './SourceList';
 import { LoadingSpinner } from './icons/LoadingSpinner';
 
 interface ChatMessageProps {
-    message: Message;
+    message: ConversationMessage;
     isLoading?: boolean;
 }
 

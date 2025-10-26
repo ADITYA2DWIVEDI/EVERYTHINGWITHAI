@@ -10,7 +10,8 @@ export interface ImagePart {
   };
 }
 
-export interface Message {
+// Renamed from 'Message' to be more specific to chat contexts
+export interface ConversationMessage {
   id: string;
   role: 'user' | 'model';
   content: string;
@@ -21,4 +22,17 @@ export interface Message {
 export interface User {
   email: string;
   isGuest: boolean;
+}
+
+export interface Conversation {
+  id: string;
+  title: string;
+  messages: ConversationMessage[];
+}
+
+export interface VideoHistoryItem {
+  id: string;
+  prompt: string;
+  videoUrl: string;
+  timestamp: number;
 }

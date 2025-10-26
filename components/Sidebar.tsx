@@ -4,6 +4,9 @@ import type { Page } from '../App';
 import { AiIcon } from './icons/AiIcon';
 import { MessageIcon } from './icons/MessageIcon';
 import { LanguageIcon } from './icons/LanguageIcon';
+import { VideoIcon } from './icons/VideoIcon';
+import { ImageIcon } from './icons/ImageIcon';
+import { VoiceIcon } from './icons/VoiceIcon';
 import { LogoutIcon } from './icons/LogoutIcon';
 import { SettingsIcon } from './icons/SettingsIcon';
 import { CreditCardIcon } from './icons/CreditCardIcon';
@@ -23,6 +26,9 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setPage, onLogout, isOpe
         { id: 'assistant', label: 'AI Assistant', icon: AiIcon },
         { id: 'livechat', label: 'Live Chat', icon: MessageIcon },
         { id: 'language', label: 'Language Learner', icon: LanguageIcon },
+        { id: 'video', label: 'Video Generation', icon: VideoIcon },
+        { id: 'image-studio', label: 'Image Studio', icon: ImageIcon },
+        { id: 'voice-lab', label: 'Voice Lab', icon: VoiceIcon },
     ];
     
     const secondaryNavItems = [
@@ -61,7 +67,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setPage, onLogout, isOpe
                     </button>
                 </div>
 
-                <nav className="flex-1 flex flex-col gap-2">
+                <nav className="flex-1 flex flex-col gap-2 overflow-y-auto">
                     {mainNavItems.map(item => (
                         <NavButton key={item.id} item={item} isCurrent={currentPage === item.id} />
                     ))}
@@ -71,7 +77,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setPage, onLogout, isOpe
                     ))}
                 </nav>
                 
-                <div>
+                <div className="mt-4">
                      <button
                         onClick={onLogout}
                         className="flex items-center gap-3 p-3 rounded-lg text-left w-full text-gray-600 hover:bg-gray-200 transition-colors duration-200"

@@ -1,80 +1,129 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Chat } from "@google/genai";
-import type { Message, ImagePart, User } from '../types';
+import type { Conversation, ConversationMessage, ImagePart, User } from '../types';
 import { startChat, sendMessageStream } from '../services/geminiService';
 import ChatInput from './ChatInput';
 import ChatMessage from './ChatMessage';
 import { AiIcon } from './icons/AiIcon';
+import { PlusIcon } from './icons/PlusIcon';
 
-interface AiAssistantProps {
-    user: User | null;
-}
 
-const AiAssistant: React.FC<AiAssistantProps> = ({ user }) => {
+const getInitialConversations = (userId: string): Conversation[] => {
+    try {
+        const item = localStorage.getItem(`conversations-${userId}`);
+        return item ? JSON.parse(item) : [];
+    } catch (error) {
+        console.error('Failed to parse conversations from localStorage', error);
+        return [];
+    }
+};
+
+const AiAssistant: React.FC<{ user: User | null }> = ({ user }) => {
     const [chat, setChat] = useState<Chat | null>(null);
-    const [messages, setMessages] = useState<Message[]>([]);
+    const [conversations, setConversations] = useState<Conversation[]>(user ? getInitialConversations(user.email) : []);
+    const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
+    const activeConversation = conversations.find(c => c.id === activeConversationId);
+
     useEffect(() => {
-        setChat(startChat());
-        // Clear messages when user changes
-        setMessages([]);
+        if (user) {
+            const userConversations = getInitialConversations(user.email);
+            setConversations(userConversations);
+            if (userConversations.length > 0) {
+                setActiveConversationId(userConversations[userConversations.length - 1].id);
+            } else {
+                handleNewChat();
+            }
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user]);
+
+     useEffect(() => {
+        if (user) {
+            localStorage.setItem(`conversations-${user.email}`, JSON.stringify(conversations));
+        }
+    }, [conversations, user]);
+
+    useEffect(() => {
+        // A new chat instance is created for each conversation
+        setChat(startChat());
+    }, [activeConversationId]);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages, isLoading]);
+    useEffect(scrollToBottom, [activeConversation?.messages, isLoading]);
+    
+    const handleNewChat = useCallback(() => {
+        const newConversation: Conversation = {
+            id: `convo-${Date.now()}`,
+            title: "New Chat",
+            messages: [],
+        };
+        setConversations(prev => [...prev, newConversation]);
+        setActiveConversationId(newConversation.id);
+    }, []);
 
     const handleSend = useCallback(async (prompt: string, image?: ImagePart) => {
-        if (!chat || isLoading || (!prompt.trim() && !image)) return;
+        if (!chat || isLoading || (!prompt.trim() && !image) || !activeConversationId) return;
 
-        const userMessage: Message = {
+        const userMessage: ConversationMessage = {
             id: Date.now().toString(),
             role: 'user',
             content: prompt,
             image: image ? `data:${image.inlineData.mimeType};base64,${image.inlineData.data}` : undefined,
         };
-        setMessages(prev => [...prev, userMessage]);
+
+        const modelMessageId = (Date.now() + 1).toString();
+        const modelMessagePlaceholder: ConversationMessage = { id: modelMessageId, role: 'model', content: '' };
+
+        setConversations(prev => prev.map(c => 
+            c.id === activeConversationId
+                ? { ...c, messages: [...c.messages, userMessage, modelMessagePlaceholder] }
+                : c
+        ));
+
         setIsLoading(true);
         setError(null);
-        
-        // Add a placeholder for the model's response
-        const modelMessageId = (Date.now() + 1).toString();
-        setMessages(prev => [...prev, { id: modelMessageId, role: 'model', content: '' }]);
 
         try {
             const stream = sendMessageStream(chat, prompt, image);
             for await (const chunk of stream) {
-                setMessages(prev => prev.map(msg => {
-                    if (msg.id === modelMessageId) {
+                setConversations(prev => prev.map(c => {
+                    if (c.id === activeConversationId) {
                         return {
-                            ...msg,
-                            content: msg.content + (chunk.textChunk || ''),
-                            sources: chunk.sources ? (msg.sources || []).concat(chunk.sources) : msg.sources,
+                            ...c,
+                            messages: c.messages.map(msg => 
+                                msg.id === modelMessageId
+                                    ? {
+                                        ...msg,
+                                        content: msg.content + (chunk.textChunk || ''),
+                                        sources: chunk.sources ? (msg.sources || []).concat(chunk.sources) : msg.sources,
+                                    }
+                                    : msg
+                            ),
                         };
                     }
-                    return msg;
+                    return c;
                 }));
             }
         } catch (e: unknown) {
             const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
             setError(errorMessage);
-            setMessages(prev => prev.map(msg =>
-                msg.id === modelMessageId
-                    ? { ...msg, content: `Sorry, something went wrong: ${errorMessage}` }
-                    : msg
+             setConversations(prev => prev.map(c => 
+                c.id === activeConversationId
+                    ? { ...c, messages: c.messages.map(msg => msg.id === modelMessageId ? { ...msg, content: `Sorry, something went wrong: ${errorMessage}` } : msg) }
+                    : c
             ));
         } finally {
             setIsLoading(false);
         }
-    }, [chat, isLoading]);
+    }, [chat, isLoading, activeConversationId]);
     
     const sampleQuestions = [
         "What were the key announcements from the last Apple event?",
@@ -84,9 +133,18 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ user }) => {
 
     return (
         <div className="flex flex-col h-full bg-transparent">
+            <header className="flex items-center justify-between p-4 border-b border-gray-200">
+                <h2 className="text-lg font-semibold text-gray-700">{activeConversation?.title || 'AI Assistant'}</h2>
+                <button 
+                    onClick={handleNewChat}
+                    className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                    <PlusIcon className="w-4 h-4" /> New Chat
+                </button>
+            </header>
             <div className="flex-1 overflow-y-auto p-4 md:p-6">
                 <div className="max-w-4xl mx-auto h-full">
-                    {messages.length === 0 ? (
+                    {(!activeConversation || activeConversation.messages.length === 0) ? (
                         <div className="flex flex-col items-center justify-center h-full text-center">
                             <div className="w-16 h-16 mb-4 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center">
                                 <AiIcon className="w-10 h-10 text-white" />
@@ -104,7 +162,7 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ user }) => {
                     ) : (
                         <div className="space-y-6">
                             <AnimatePresence>
-                                {messages.map((message) => (
+                                {activeConversation.messages.map((message) => (
                                     <motion.div
                                         key={message.id}
                                         layout
@@ -113,7 +171,7 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ user }) => {
                                         exit={{ opacity: 0, y: -20 }}
                                         transition={{ duration: 0.3 }}
                                     >
-                                        <ChatMessage message={message} isLoading={isLoading && message.id === messages[messages.length - 1].id} />
+                                        <ChatMessage message={message} isLoading={isLoading && message.id === activeConversation.messages[activeConversation.messages.length - 1].id} />
                                     </motion.div>
                                 ))}
                             </AnimatePresence>

@@ -1,5 +1,5 @@
 {
-  "name": "EverythingWithAI",
+  "name": "Copy of EverythingWithAI",
   "description": "A multi-functional AI platform with an AI Assistant, live chat, and language learning. Built as a Progressive Web App.",
   "requestFramePermissions": [
     "camera"

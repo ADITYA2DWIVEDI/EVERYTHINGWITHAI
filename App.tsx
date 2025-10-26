@@ -7,11 +7,14 @@ import Header from './components/Header';
 import AiAssistant from './components/AiAssistant';
 import LiveChat from './components/LiveChat';
 import LanguageLearner from './components/LanguageLearner';
+import VideoGenerator from './components/VideoGenerator';
+import ImageStudio from './components/ImageStudio';
+import VoiceLab from './components/VoiceLab';
 import Settings from './components/Settings';
 import Plans from './components/Plans';
 import Help from './components/Help';
 
-export type Page = 'assistant' | 'livechat' | 'language' | 'settings' | 'plans' | 'help';
+export type Page = 'assistant' | 'livechat' | 'language' | 'video' | 'image-studio' | 'voice-lab' | 'settings' | 'plans' | 'help';
 
 const pageVariants = {
     initial: { opacity: 0, y: 20 },
@@ -62,6 +65,12 @@ const App: React.FC = () => {
                 return <LiveChat user={user} />;
             case 'language':
                 return <LanguageLearner />;
+            case 'video':
+                return <VideoGenerator />;
+            case 'image-studio':
+                return <ImageStudio />;
+            case 'voice-lab':
+                return <VoiceLab />;
             case 'settings':
                 return <Settings user={user} />;
             case 'plans':
